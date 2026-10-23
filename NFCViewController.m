@@ -416,7 +416,7 @@ static NSString *NPHexString(NSData *data) {
                     if (readError) { [self finish:nil detail:nil error:readError]; return; }
                     NSMutableArray<NSString *> *records = [NSMutableArray array];
                     for (NFCNDEFPayload *p in message.records) {
-                        NSString *value = [p wellKnownTypeTextPayloadWithLocale:nil];
+                        NSString *value = [p wellKnownTypeTextPayloadWithLocale:[NSLocale currentLocale]];
                         if (!value) value = [[p wellKnownTypeURIPayload] absoluteString];
                         if (!value) value = [NSString stringWithFormat:@"Данные: %@", NPHexString(p.payload)];
                         [records addObject:value];
