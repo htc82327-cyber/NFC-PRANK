@@ -2,8 +2,7 @@ name: Build NFC PRANK .deb
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build rootless DEB
+    name: Build and verify rootless DEB
     runs-on: macos-15
     timeout-minutes: 40
     env:
@@ -22,36 +21,66 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check source layout
+      - name: Validate project
         run: |
-          test -f Makefile
-          test -f control
-          test -f NFCPrank/Info.plist
-          test -f entitlements.plist
+          set -euo pipefail
+          for file in Makefile control entitlements.plist NFCPrank/Info.plist NFCViewController.m tests.py; do
+            test -s "$file"
+          done
+          plutil -lint NFCPrank/Info.plist entitlements.plist
+          python3 tests.py
 
-      - name: Install required tools
+      - name: Install dependencies (without fakeroot)
         run: |
-          brew install ldid dpkg fakeroot
+          set -euo pipefail
+          brew install ldid dpkg
+          # Homebrew's fakeroot on this macOS runner crashes with
+          # "have arm64, need arm64e". Theos/dm.pl can package without it.
+          if brew list --versions fakeroot >/dev/null 2>&1; then
+            brew uninstall --ignore-dependencies fakeroot
+          fi
+          if command -v fakeroot >/dev/null 2>&1; then
+            echo "::error::fakeroot is still on PATH; refusing the broken package path."
+            exit 1
+          fi
           command -v ldid
           command -v dpkg-deb
 
       - name: Install Theos
         run: |
+          set -euo pipefail
           git clone --depth 1 --recurse-submodules https://github.com/theos/theos.git "$THEOS"
           test -f "$THEOS/makefiles/common.mk"
-
-      - name: Check iOS SDK
-        run: |
-          xcode-select -p
+          test -f "$THEOS/bin/fakeroot.sh"
+          test -f "$THEOS/makefiles/package/deb.mk"
           xcrun --sdk iphoneos --show-sdk-path
 
-      - name: Build .deb
+      - name: Compile, sign, and package
         run: |
+          set -euo pipefail
           make clean package FINALPACKAGE=1
+          ls -lah packages
           find packages -maxdepth 1 -type f -name '*.deb' -print
-          test -n "$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)"
 
-      - name: Upload .deb
+      - name: Verify DEB contents
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(packages/*.deb)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one .deb file."
+            exit 1
+          fi
+          deb="${packages[0]}"
+          dpkg-deb --info "$deb"
+          dpkg-deb --contents "$deb" | tee /tmp/nfcprank-deb-contents.txt
+          test "$(dpkg-deb --field "$deb" Package)" = "com.thxrealx7.nfcprank"
+          test "$(dpkg-deb --field "$deb" Architecture)" = "iphoneos-arm64"
+          grep -Fq 'var/jb/Applications/NFCPrank.app/NFCPrank' /tmp/nfcprank-deb-contents.txt
+          grep -Fq 'var/jb/Applications/NFCPrank.app/Info.plist' /tmp/nfcprank-deb-contents.txt
+          echo "Rootless package layout and app binary verified."
+
+      - name: Upload installable package
         uses: actions/upload-artifact@v4
         with:
           name: NFC-PRANK-rootless-deb
