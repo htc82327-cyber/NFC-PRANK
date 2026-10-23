@@ -15,7 +15,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
     env:
-      THEOS: ${{ runner.temp }}/theos
+      THEOS: /tmp/nfcprank-theos
       THEOS_PACKAGE_SCHEME: rootless
 
     steps:
