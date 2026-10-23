@@ -1,0 +1,60 @@
+name: Build NFC PRANK .deb
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build rootless DEB
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      THEOS: ${{ runner.temp }}/theos
+      THEOS_PACKAGE_SCHEME: rootless
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check source layout
+        run: |
+          test -f Makefile
+          test -f control
+          test -f NFCPrank/Info.plist
+          test -f entitlements.plist
+
+      - name: Install required tools
+        run: |
+          brew install ldid dpkg fakeroot
+          command -v ldid
+          command -v dpkg-deb
+
+      - name: Install Theos
+        run: |
+          git clone --depth 1 --recurse-submodules https://github.com/theos/theos.git "$THEOS"
+          test -f "$THEOS/makefiles/common.mk"
+
+      - name: Check iOS SDK
+        run: |
+          xcode-select -p
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Build .deb
+        run: |
+          make clean package FINALPACKAGE=1
+          find packages -maxdepth 1 -type f -name '*.deb' -print
+          test -n "$(find packages -maxdepth 1 -type f -name '*.deb' -print -quit)"
+
+      - name: Upload .deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: NFC-PRANK-rootless-deb
+          path: packages/*.deb
+          if-no-files-found: error
+          retention-days: 30
