@@ -1,0 +1,9 @@
+Package: com.thxrealx7.nfcprank
+Name: NFC PRANK
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: NFC NDEF editor and reversible NTAG21x password protection (rootless jailbreak).
+Maintainer: thxrealx7
+Author: thxrealx7
+Section: Utilities
+Depends: firmware (>= 15.0)
